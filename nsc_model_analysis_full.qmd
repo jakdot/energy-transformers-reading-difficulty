@@ -1,0 +1,121 @@
+---
+title: "A hierarchical model for NSC data -- also words with multi tokens"
+format:
+  html:
+    embed-resources: true
+execute:
+  cache: true
+---
+
+```{r}
+#| message: false
+
+library(tidytable) # lightweight and better dplyr alternative
+library(bayesplot)
+library(cmdstanr) # do install_cmdstan() if you haven't already
+library(ggplot2)
+library(here)
+options(tibble.width = Inf)
+dir.create(here("figures"), showWarnings = FALSE)
+```
+
+```{r}
+merged_full <- fread("nsc_with_energy_surprisal_measures.csv")
+
+glimpse(merged_full)
+
+#print(merged_full, width=Inf, n=100)
+
+merged_full$E_diff_token_0_6 <- merged_full$E_total_token_0 - merged_full$E_total_token_6
+
+merged_full$E_diff_token_0_5 <- merged_full$E_total_token_0 - merged_full$E_total_token_5
+
+merged_full$E_diff_total_0_6 <- merged_full$E_total_0 - merged_full$E_total_6
+
+merged_full$E_diff_total_0_5 <- merged_full$E_total_0 - merged_full$E_total_5
+
+```
+
+Without zone for total pred bc correlated with energies:
+
+```{r}
+
+library(lme4)
+
+merged_full <- merged_full %>% filter(!is.na(surprisal), RT > 0)
+
+merged_full$E_total_pred_mean_5 <- merged_full$E_total_pred_sum_5/merged_full$n_bpe
+
+merged_full$E_total_pred_mean_6 <- merged_full$E_total_pred_sum_6/merged_full$n_bpe
+
+# comparing without surprisal
+
+m0z <- lmer(log(RT) ~ 1 + surprisal + zone + log_unigram + log_bigram + word_length + (1|WorkerId) + (1|item), data=merged_full)
+
+print(summary(m0z))
+
+m0zgpt2 <- lmer(log(RT) ~ 1 + surprisalgpt2 + zone + log_unigram + log_bigram + word_length + (1|WorkerId) + (1|item), data=merged_full)
+
+print(summary(m0zgpt2))
+
+m0.1z <- lmer(log(RT) ~ 1 + E_total_pred_mean_5 + zone + log_unigram + log_bigram + word_length + (1|WorkerId) + (1|item), data=merged_full)
+
+print(summary(m0.1z))
+
+m0.2z <- lmer(log(RT) ~ 1 + E_total_pred_mean_6 + zone + log_unigram + log_bigram + word_length + (1|WorkerId) + (1|item), data=merged_full)
+
+print(summary(m0.2z))
+
+m0.3z <- lmer(log(RT) ~ 1 + expected_score_pred_5 + zone + log_unigram + log_bigram + word_length + (1|WorkerId) + (1|item), data=merged_full)
+
+print(summary(m0.3z))
+
+m0.4z <- lmer(log(RT) ~ 1 + entropy_pred_5 + zone + log_unigram + log_bigram + word_length + (1|WorkerId) + (1|item), data=merged_full)
+
+print(summary(m0.4z))
+
+anova(m0z, m0zgpt2, m0.1z, m0.2z, m0.3z, m0.4z)
+
+# comparing with surprisal in one model
+
+m1z <- lmer(log(RT) ~ 1 + surprisal + E_total_pred_mean_5 + zone + log_unigram + log_bigram + word_length + (1|WorkerId) + (1|item), data=merged_full)
+
+print(summary(m1z))
+
+m2z <- lmer(log(RT) ~ 1 + surprisal + E_total_pred_mean_6 + zone + log_unigram + log_bigram + word_length + (1|WorkerId) + (1|item), data=merged_full)
+
+print(summary(m2z))
+
+m3z <- lmer(log(RT) ~ 1 + surprisal + expected_score_pred_5 + zone + log_unigram + log_bigram + word_length + (1|WorkerId) + (1|item), data=merged_full)
+
+print(summary(m2z))
+
+m4z <- lmer(log(RT) ~ 1 + surprisal + entropy_pred_5 + zone + log_unigram + log_bigram + word_length + (1|WorkerId) + (1|item), data=merged_full)
+
+print(summary(m3z))
+
+anova(m0z, m1z, m2z, m3z, m4z)
+
+# comparing with surprisal gpt2 in one model
+
+m1z <- lmer(log(RT) ~ 1 + surprisalgpt2 + E_total_pred_mean_5 + zone + log_unigram + log_bigram + word_length + (1|WorkerId) + (1|item), data=merged_full)
+
+print(summary(m1z))
+
+m2z <- lmer(log(RT) ~ 1 + surprisalgpt2 + E_total_pred_mean_6 + zone + log_unigram + log_bigram + word_length + (1|WorkerId) + (1|item), data=merged_full)
+
+print(summary(m2z))
+
+m3z <- lmer(log(RT) ~ 1 + surprisalgpt2 + expected_score_pred_5 + zone + log_unigram + log_bigram + word_length + (1|WorkerId) + (1|item), data=merged_full)
+
+print(summary(m3z))
+
+m4z <- lmer(log(RT) ~ 1 + surprisalgpt2 + entropy_pred_5 + zone + log_unigram + log_bigram + word_length + (1|WorkerId) + (1|item), data=merged_full)
+
+print(summary(m4z))
+
+anova(m0zgpt2, m1z, m2z, m3z, m4z)
+
+
+```
+

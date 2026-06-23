@@ -1,0 +1,249 @@
+---
+title: "A hierarchical model for UCL data"
+format:
+  html:
+    embed-resources: true
+execute:
+  cache: true
+---
+
+```{r}
+#| message: false
+
+library(tidytable) # lightweight and better dplyr alternative
+library(bayesplot)
+library(cmdstanr) # do install_cmdstan() if you haven't already
+library(ggplot2)
+library(here)
+options(tibble.width = Inf)
+dir.create(here("figures"), showWarnings = FALSE)
+```
+
+ET
+
+```{r}
+merged_full <- fread("ucl_et_full.csv")
+
+glimpse(merged_full)
+
+#print(merged_full, width=Inf, n=100)
+
+merged_full$E_diff_token_0_6 <- merged_full$E_total_token_0 - merged_full$E_total_token_6
+
+merged_full$E_diff_token_0_5 <- merged_full$E_total_token_0 - merged_full$E_total_token_5
+
+merged_full$E_diff_total_0_6 <- merged_full$E_total_0 - merged_full$E_total_6
+
+merged_full$E_diff_total_0_5 <- merged_full$E_total_0 - merged_full$E_total_5
+
+```
+
+
+```{r}
+
+library(lme4)
+
+subjects <- merged_full %>% subset(correct %in% c("c", "e")) %>% group_by(subj_nr) %>% summarise(length(which(correct == "c"))/length(correct))
+# only subjects answering at least 80% correct are used
+merged_full <- subset(merged_full, subj_nr %in% subset(subjects, V1 >= 0.8)$subj_nr)
+
+merged_full$word_length <- nchar(merged_full$word_x)
+merged_full$unigram_logfreq <- log(merged_full$unigram_freq)
+
+merged_full <- merged_full %>% filter(!is.na(surprisal), RTgopast > 0, !is.na(unigram_logfreq), !is.na(bigram_logfreq) )
+
+merged_full$E_total_pred_mean_5 <- merged_full$E_total_pred_sum_5/merged_full$n_bpe
+
+merged_full$E_total_pred_mean_6 <- merged_full$E_total_pred_sum_6/merged_full$n_bpe
+
+merged_full <- subset(merged_full, RTgopast > 100 & RTgopast < 3000)
+
+glimpse(merged_full)
+
+# comparing without surprisal
+
+m0z <- lmer(log(RTgopast) ~ 1 + surprisal + word_pos + sent_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m0z))
+
+m0zgpt2 <- lmer(log(RTgopast) ~ 1 + surprisalgpt2 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m0zgpt2))
+
+m0.1z <- lmer(log(RTgopast) ~ 1 + E_total_pred_mean_5 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m0.1z))
+
+m0.2z <- lmer(log(RTgopast) ~ 1 + E_total_pred_sum_5 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m0.2z))
+
+m0.2z <- lmer(log(RTgopast) ~ 1 + E_total_pred_mean_6 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m0.2z))
+
+
+m0.3z <- lmer(log(RTgopast) ~ 1 + expected_score_pred_6 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m0.3z))
+
+m0.4z <- lmer(log(RTgopast) ~ 1 + entropy_pred_6  + sent_pos+ word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m0.4z))
+
+anova(m0z, m0zgpt2, m0.1z, m0.2z, m0.3z, m0.4z)
+
+m1z <- lmer(log(RTgopast) ~ 1 + surprisal + E_total_pred_mean_5  + sent_pos+ word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m1z))
+
+m2z <- lmer(log(RTgopast) ~ 1 + surprisal + E_total_pred_mean_6  + sent_pos+ word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m2z))
+
+m3z <- lmer(log(RTgopast) ~ 1 + surprisal +  scale(expected_score_pred_6)  + sent_pos+ word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m3z))
+
+m4z <- lmer(log(RTgopast) ~ 1 + surprisal +  scale(entropy_pred_6)  + sent_pos+ word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m4z))
+
+anova(m0z, m1z, m2z, m3z, m4z)
+
+# comparing with surprisal gpt2
+
+m1z <- lmer(log(RTgopast) ~ 1 + surprisalgpt2 + E_total_pred_mean_5  + sent_pos+ word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m1z))
+
+m2z <- lmer(log(RTgopast) ~ 1 + surprisalgpt2 + E_total_pred_mean_6 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m2z))
+
+m3z <- lmer(log(RTgopast) ~ 1 + surprisalgpt2 +  expected_score_pred_6 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m3z))
+
+m4z <- lmer(log(RTgopast) ~ 1 + surprisalgpt2 +  entropy_pred_6 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m4z))
+
+anova(m0zgpt2, m1z, m2z, m3z, m4z)
+
+```
+
+SPR
+
+```{r}
+merged_full <- fread("ucl_spr_full.csv")
+
+glimpse(merged_full)
+
+#print(merged_full, width=Inf, n=100)
+
+merged_full$E_diff_token_0_6 <- merged_full$E_total_token_0 - merged_full$E_total_token_6
+
+merged_full$E_diff_token_0_5 <- merged_full$E_total_token_0 - merged_full$E_total_token_5
+
+merged_full$E_diff_total_0_6 <- merged_full$E_total_0 - merged_full$E_total_6
+
+merged_full$E_diff_total_0_5 <- merged_full$E_total_0 - merged_full$E_total_5
+
+```
+
+
+```{r}
+
+library(lme4)
+
+# only subjects answering at least 80% correct are used
+subjects <- merged_full %>% subset(correct %in% c("c", "e")) %>% group_by(subj_nr) %>% summarise(length(which(correct == "c"))/length(correct))
+
+merged_full <- subset(merged_full, subj_nr %in% subset(subjects, V1 >= 0.8)$subj_nr)
+
+merged_full$word_length <- nchar(merged_full$word_x)
+merged_full$unigram_logfreq <- log(merged_full$unigram_freq)
+
+merged_full <- merged_full %>% filter(!is.na(surprisal), RT > 0, !is.na(unigram_logfreq), !is.na(bigram_logfreq) )
+
+merged_full$E_total_pred_mean_5 <- merged_full$E_total_pred_sum_5/merged_full$n_bpe
+
+merged_full$E_total_pred_mean_6 <- merged_full$E_total_pred_sum_6/merged_full$n_bpe
+
+merged_full <- subset(merged_full, RT > 100 & RT < 3000)
+
+glimpse(merged_full)
+
+# comparing without surprisal
+
+m0z <- lmer(log(RT) ~ 1 + surprisal + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m0z))
+
+m0zgpt2 <- lmer(log(RT) ~ 1 + surprisalgpt2 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m0zgpt2))
+
+m0.1z <- lmer(log(RT) ~ 1 + E_total_pred_mean_5 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full )
+
+print(summary(m0.1z))
+
+m0.1z <- lmer(log(RT) ~ 1 + E_total_pred_mean_5 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m0.1z))
+
+m0.2z <- lmer(log(RT) ~ 1 + E_total_pred_mean_6 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m0.2z))
+
+m0.3z <- lmer(log(RT) ~ 1 + expected_score_pred_5 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m0.3z))
+
+m0.4z <- lmer(log(RT) ~ 1 + entropy_pred_5 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m0.4z))
+
+anova(m0z, m0zgpt2, m0.1z, m0.2z, m0.3z, m0.4z)
+
+m1z <- lmer(log(RT) ~ 1 + surprisal + E_total_pred_mean_5 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m1z))
+
+m2z <- lmer(log(RT) ~ 1 + surprisal + E_total_pred_mean_6 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m2z))
+
+m3z <- lmer(log(RT) ~ 1 + surprisal +  expected_score_pred_5 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m3z))
+
+m4z <- lmer(log(RT) ~ 1 + surprisal +  entropy_pred_5 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m4z))
+
+anova(m0z, m1z, m2z, m3z, m4z)
+
+# comparing with surprisal gpt2
+
+m1z <- lmer(log(RT) ~ 1 + surprisalgpt2 + E_total_pred_mean_5 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m1z))
+
+m2z <- lmer(log(RT) ~ 1 + surprisalgpt2 + E_total_pred_mean_6 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m2z))
+
+m3z <- lmer(log(RT) ~ 1 + surprisalgpt2 +  expected_score_pred_5 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m3z))
+
+m4z <- lmer(log(RT) ~ 1 + surprisalgpt2 +  entropy_pred_5 + sent_pos + word_pos + unigram_logfreq + bigram_logfreq + word_length + (1|subj_nr) + (1|sent_nr), data=merged_full)
+
+print(summary(m4z))
+
+anova(m0zgpt2, m1z, m2z, m3z, m4z)
+
+
+```
